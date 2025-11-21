@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import easyocr
+from pyzbar.pyzbar import decode
 from PIL import Image
 import re
 import os
 import shutil
+import time  # Para el temporizador de keepalive
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font
 
@@ -14,7 +15,7 @@ COLOR_VERDE = PatternFill(start_color="00FF00", end_color="00FF00", fill_type="s
 COLOR_MORADO = PatternFill(start_color="800080", end_color="800080", fill_type="solid")
 
 st.title("📚 Inventario Biblioteca UCC - Sede Medellín")
-st.write("La aplicación detecta códigos automáticamente y actualiza el Excel sin necesidad de presionar botones.")
+st.write("La aplicación detecta códigos de barras automáticamente y actualiza el Excel sin necesidad de presionar botones.")
 
 EXCEL_PATH = "inventario.xlsx"
 BACKUP_PATH = "inventario_backup.xlsx"
@@ -49,55 +50,30 @@ if not codigo_columna:
 
 codigo_a_fila = {str(row[codigo_columna]).strip(): idx + 2 for idx, row in df.iterrows()}
 
-@st.cache_resource
-def cargar_ocr():
-    return easyocr.Reader(['en'], gpu=False)  # Solo inglés para velocidad, sin GPU
-
-reader = cargar_ocr()
-
-st.subheader("Escanea el código")
-img_file = st.camera_input("Toma una foto del código")
+st.subheader("Escanea el código de barras")
+img_file = st.camera_input("Toma una foto del código de barras")
 
 codigo_detectado = None
 
 if img_file:
-    # Cargar imagen y redimensionar para acelerar (640x480 píxeles)
+    # Cargar imagen con PIL
     img = Image.open(img_file)
-    img = img.resize((640, 480), Image.Resampling.LANCZOS)  # Reducir tamaño
-    img_gray = img.convert('L')  # Conversión rápida a gris
-    img_array = np.array(img_gray)
+    img_array = np.array(img)
 
-    # OCR con easyocr optimizado (detail=0 para solo texto, sin coordenadas)
-    textos = reader.readtext(img_array, detail=0)
-
-    frases_prohibidas = [
-        "sistemadeinformacionbibliografico",
-        "sistemadeinformacion",
-        "bibliografico",
-        "biblioteca",
-        "universidad",
-        "cooperativa",
-        "colombia"
-    ]
+    # Decodificar códigos de barras con pyzbar (muy rápido)
+    decoded_objects = decode(img_array)
 
     posibles_codigos = []
 
-    for t in textos:
-        t_limpio = t.lower().replace(" ", "").replace("-", "").strip()
-
-        if any(frase in t_limpio for frase in frases_prohibidas):
-            continue
-
-        if re.fullmatch(r"b\d{6,8}", t_limpio):
-            posibles_codigos.append(t_limpio.upper())
-            continue
-
-        if t_limpio.startswith("b") and len(t_limpio) >= 7:
-            posibles_codigos.append(t_limpio.upper())
+    for obj in decoded_objects:
+        data = obj.data.decode('utf-8').strip().upper()  # Extraer dato del código
+        # Filtrar códigos que empiecen con 'B' y tengan longitud adecuada (ajusta si es necesario)
+        if data.startswith("B") and len(data) >= 7:
+            posibles_codigos.append(data)
 
     if posibles_codigos:
-        codigo_detectado = max(posibles_codigos, key=len)
-        st.success(f"Código detectado: **{codigo_detectado}**")
+        codigo_detectado = max(posibles_codigos, key=len)  # Tomar el más largo si hay varios
+        st.success(f"Código de barras detectado: **{codigo_detectado}**")
 
         if codigo_detectado in codigo_a_fila:
             fila = codigo_a_fila[codigo_detectado]
@@ -119,7 +95,7 @@ if img_file:
         crear_backup()
 
     else:
-        st.warning("No se encontró un código válido en la imagen.")
+        st.warning("No se encontró un código de barras válido en la imagen.")
         
 st.subheader("Ingresar código manualmente")
 
@@ -156,6 +132,15 @@ if st.button("Procesar Código Manual"):
     
 st.subheader("Inventario actualizado")
 st.dataframe(pd.read_excel(EXCEL_PATH))
+
+# Keepalive manual para mantener la app activa en Streamlit Cloud
+keepalive_placeholder = st.empty()
+start_time = time.time()
+while True:
+    elapsed = int(time.time() - start_time)
+    keepalive_placeholder.text(f"🟢 App activa - Tiempo transcurrido: {elapsed} segundos. Última actualización: {time.strftime('%H:%M:%S')}")
+    time.sleep(300)  # Actualizar cada 5 minutos (300 segundos)
+    st.rerun()  # Forzar rerun para mantener viva la app
 
 with open(EXCEL_PATH, "rb") as f:
     st.download_button("Descargar inventario actualizado", f, file_name="inventario_actualizado.xlsx")
