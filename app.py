@@ -1,16 +1,13 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import pytesseract
+import easyocr
 from PIL import Image
 import re
 import os
 import shutil
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font
-
-# Configurar Tesseract (asegúrate de que esté instalado en tu sistema; descarga de https://github.com/UB-Mannheim/tesseract/wiki)
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Ajusta la ruta si es necesario (en Windows/Linux/Mac)
 
 # Colores para Excel
 COLOR_VERDE = PatternFill(start_color="00FF00", end_color="00FF00", fill_type="solid")
@@ -52,19 +49,26 @@ if not codigo_columna:
 
 codigo_a_fila = {str(row[codigo_columna]).strip(): idx + 2 for idx, row in df.iterrows()}
 
+@st.cache_resource
+def cargar_ocr():
+    return easyocr.Reader(['en'], gpu=False)  # Solo inglés para velocidad, sin GPU
+
+reader = cargar_ocr()
+
 st.subheader("Escanea el código")
 img_file = st.camera_input("Toma una foto del código")
 
 codigo_detectado = None
 
 if img_file:
-    # Cargar imagen y redimensionar para acelerar (800x600 píxeles) con PIL
+    # Cargar imagen y redimensionar para acelerar (640x480 píxeles)
     img = Image.open(img_file)
-    img = img.resize((800, 600), Image.Resampling.LANCZOS)  # Reducir tamaño con PIL
-    img_gray = img.convert('L')  # Conversión rápida a gris con PIL
+    img = img.resize((640, 480), Image.Resampling.LANCZOS)  # Reducir tamaño
+    img_gray = img.convert('L')  # Conversión rápida a gris
+    img_array = np.array(img_gray)
 
-    # OCR con Tesseract (más rápido que easyocr)
-    texto_detectado = pytesseract.image_to_string(img_gray, config='--psm 6')  # PSM 6 para bloques de texto uniforme
+    # OCR con easyocr optimizado (detail=0 para solo texto, sin coordenadas)
+    textos = reader.readtext(img_array, detail=0)
 
     frases_prohibidas = [
         "sistemadeinformacionbibliografico",
@@ -78,8 +82,8 @@ if img_file:
 
     posibles_codigos = []
 
-    for linea in texto_detectado.split('\n'):
-        t_limpio = linea.lower().replace(" ", "").replace("-", "").strip()
+    for t in textos:
+        t_limpio = t.lower().replace(" ", "").replace("-", "").strip()
 
         if any(frase in t_limpio for frase in frases_prohibidas):
             continue
