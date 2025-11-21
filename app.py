@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import pytesseract
 from PIL import Image
-import cv2  # Para redimensionar imagen
 import re
 import os
 import shutil
@@ -59,10 +58,10 @@ img_file = st.camera_input("Toma una foto del código")
 codigo_detectado = None
 
 if img_file:
-    # Cargar imagen y redimensionar para acelerar (800x600 píxeles)
+    # Cargar imagen y redimensionar para acelerar (800x600 píxeles) con PIL
     img = Image.open(img_file)
-    img = img.resize((800, 600), Image.Resampling.LANCZOS)  # Reducir tamaño
-    img_gray = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2GRAY)  # Conversión rápida a gris con OpenCV
+    img = img.resize((800, 600), Image.Resampling.LANCZOS)  # Reducir tamaño con PIL
+    img_gray = img.convert('L')  # Conversión rápida a gris con PIL
 
     # OCR con Tesseract (más rápido que easyocr)
     texto_detectado = pytesseract.image_to_string(img_gray, config='--psm 6')  # PSM 6 para bloques de texto uniforme
