@@ -1,12 +1,11 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from pyzbar.pyzbar import decode
+from pyzxing import BarCodeReader
 from PIL import Image
 import re
 import os
 import shutil
-import time  # Para el temporizador de keepalive
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font
 
@@ -50,6 +49,9 @@ if not codigo_columna:
 
 codigo_a_fila = {str(row[codigo_columna]).strip(): idx + 2 for idx, row in df.iterrows()}
 
+# Inicializar lector de códigos de barras con pyzxing (pura Python, compatible con cloud)
+reader = BarCodeReader()
+
 st.subheader("Escanea el código de barras")
 img_file = st.camera_input("Toma una foto del código de barras")
 
@@ -58,21 +60,21 @@ codigo_detectado = None
 if img_file:
     # Cargar imagen con PIL
     img = Image.open(img_file)
-    img_array = np.array(img)
 
-    # Decodificar códigos de barras con pyzbar (muy rápido)
-    decoded_objects = decode(img_array)
+    # Intentar decodificar códigos de barras con pyzxing
+    results = reader.decode(img)
 
     posibles_codigos = []
 
-    for obj in decoded_objects:
-        data = obj.data.decode('utf-8').strip().upper()  # Extraer dato del código
-        # Filtrar códigos que empiecen con 'B' y tengan longitud adecuada (ajusta si es necesario)
-        if data.startswith("B") and len(data) >= 7:
-            posibles_codigos.append(data)
+    if results:
+        for result in results:
+            if 'parsed' in result and result['parsed']:
+                data = result['parsed'].strip().upper()
+                if data.startswith("B") and len(data) >= 7:
+                    posibles_codigos.append(data)
 
     if posibles_codigos:
-        codigo_detectado = max(posibles_codigos, key=len)  # Tomar el más largo si hay varios
+        codigo_detectado = max(posibles_codigos, key=len)
         st.success(f"Código de barras detectado: **{codigo_detectado}**")
 
         if codigo_detectado in codigo_a_fila:
@@ -95,7 +97,7 @@ if img_file:
         crear_backup()
 
     else:
-        st.warning("No se encontró un código de barras válido en la imagen.")
+        st.warning("No se encontró un código de barras válido en la imagen. Intenta con OCR si es texto impreso.")
         
 st.subheader("Ingresar código manualmente")
 
@@ -132,15 +134,6 @@ if st.button("Procesar Código Manual"):
     
 st.subheader("Inventario actualizado")
 st.dataframe(pd.read_excel(EXCEL_PATH))
-
-# Keepalive manual para mantener la app activa en Streamlit Cloud
-keepalive_placeholder = st.empty()
-start_time = time.time()
-while True:
-    elapsed = int(time.time() - start_time)
-    keepalive_placeholder.text(f"🟢 App activa - Tiempo transcurrido: {elapsed} segundos. Última actualización: {time.strftime('%H:%M:%S')}")
-    time.sleep(300)  # Actualizar cada 5 minutos (300 segundos)
-    st.rerun()  # Forzar rerun para mantener viva la app
 
 with open(EXCEL_PATH, "rb") as f:
     st.download_button("Descargar inventario actualizado", f, file_name="inventario_actualizado.xlsx")
