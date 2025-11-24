@@ -98,7 +98,7 @@ function descargarExcel() {
 
 function subirSharePoint() {
     // Placeholder: Reemplaza con tu URL de SharePoint
-    let sharePointUrl = https://ucceduco-my.sharepoint.com/:x:/r/personal/daniel_benjumea_ucc_edu_co/Documents/inventario%20-%20solo%20codigos.xlsx?d=wdb1f92c8b2f246599c69a9b22ccf2ac6&csf=1&web=1&e=LoVfGm;
+    let sharePointUrl ='https://ucceduco-my.sharepoint.com/:x:/r/personal/daniel_benjumea_ucc_edu_co/Documents/inventario%20-%20solo%20codigos.xlsx?d=wdb1f92c8b2f246599c69a9b22ccf2ac6&csf=1&web=1&e=LoVfGm';
     let data = JSON.stringify(inventario);
 
     fetch(sharePointUrl, {
